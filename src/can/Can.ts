@@ -199,17 +199,53 @@ class Can extends BitUtils {
     endian: EndianType,
     signed: boolean,
   ): number {
-    const bitField = this.payload2Binary(payload, endian);
-    const valBitField = this.extractBitRange(bitField, startBit, signalLength, endian);
+    let value = this.extractBits(payload, startBit, signalLength, endian);
 
-    let prcValue;
     if (signed) {
-      prcValue = Number(this.bin2decSigned(valBitField.join('')));
-    } else {
-      prcValue = Number(this.bin2dec(valBitField.join('')));
+      value = this.applySign(value, signalLength);
     }
 
-    return prcValue;
+    return value;
+  }
+
+  extractBits(canData: number[], startBit: number, length: number, endianness: EndianType): number {
+    // Calculate byte and bit indices within the array
+    const startByteIndex = Math.floor(startBit / 8);
+    const bitOffset = startBit % 8;
+
+    // Extract the relevant bits for the signal from the CAN message
+    let value = 0;
+
+    if (endianness === 'Motorola') {
+      for (let i = startByteIndex; i < startByteIndex + Math.ceil(length / 8); i++) {
+        const bitShift = i === startByteIndex ? bitOffset : 0;
+        value <<= 8;
+        value |= canData[i];
+      }
+    } else if (endianness === 'Intel') {
+      for (let i = startByteIndex + Math.ceil(length / 8) - 1; i >= startByteIndex; i--) {
+        value <<= 8;
+        value |= canData[i];
+      }
+    } else {
+      throw new Error('Invalid endianness specified. Use "Motorola" or "Intel".');
+    }
+
+    value &= (1 << length) - 1;
+
+    return value;
+  }
+
+  applySign(value: number, length: number): number {
+    // Check if the value is negative based on the sign bit
+    const signBit = 1 << (length - 1);
+
+    if (value & signBit) {
+      // If negative, sign-extend the value
+      return value - (1 << length);
+    }
+
+    return value;
   }
 
   setSignalValues() {
